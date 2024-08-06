@@ -22,4 +22,5 @@ router.route("/register").post(
 router.route("/login").post(loginUser)
 router.route("/logout").post(verifyJwt,logoutUser)
 router.route("/refresh-token").post(refreshAccessToken)
+//router.route("/check-online").get(verifyJwt,checkOnline)
 export default router
