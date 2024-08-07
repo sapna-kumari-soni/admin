@@ -1,20 +1,20 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
-import {User} from "../models/user.model.js";
+import {Admin} from "../models/admin.model.js";
 import {uploadOnCloudinary} from "../utils/cloudinary.js"
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken"
 import mongoose from "mongoose";
-import { application } from "express";
+//import { application } from "express";
 
-const generateAccessAndRefreshTokens = async(userId) => {
+const generateAccessAndRefreshTokens = async(adminId) => {
     try{
-        const user = await User.findById(userId)
-        const accessToken = await user.generateAccessToken()
-        const refreshToken = await user.generateRefreshToken()
+        const admin = await Admin.findById(adminId)
+        const accessToken = await admin.generateAccessToken()
+        const refreshToken = await admin.generateRefreshToken()
 
-        user.refreshToken = refreshToken
-        await user.save({validateBeforeSave:false})
+        admin.refreshToken = refreshToken
+        await admin.save({validateBeforeSave:false})
         return {accessToken,refreshToken}
     }
     catch(error) {
@@ -27,36 +27,36 @@ const generateAccessAndRefreshTokens = async(userId) => {
 //     const minutes = String(now.getMinutes()).padStart(2, '0'); // Ensure two digits
 //     return `${hours}:${minutes}`; // Format as HH:MM
 // };
-const registerUser = asyncHandler(async (req,res) =>{
-    // get user details from frontend
+const registerAdmin = asyncHandler(async (req,res) =>{
+    // get admin details from frontend
     // validation - not empty
-    // check if user already exists: username, email
+    // check if admin already exists: adminname, email
     // check for images, check for avatar
     // upload them to cloudinary, avatar
-    // create user object - create entry in db
+    // create admin object - create entry in db
     // remove password and refresh token field from response
-    // check for user creation
+    // check for admin creation
     // return res
 
     // res.status(200).json({
     //     message:"ok"
     // })
-    const {fullName,email,username,password} = req.body
+    const {fullName,email,adminname,password} = req.body
     //console.log("email:",email);
     // if(fullName === ""){
     //     throw new ApiError(400,"Fullname is required")
     // }
     if(
-        [fullName,email,username,password].some((field) =>
+        [fullName,email,adminname,password].some((field) =>
         field?.trim() === "")
     ){
         throw new ApiError(400,"All fields are required")
     }
-    const existedUser = await User.findOne({
-        $or : [{username},{email}]
+    const existedAdmin = await Admin.findOne({
+        $or : [{adminname},{email}]
     })
-    if(existedUser){
-        throw new ApiError(409,"User with email or username already exists.")
+    if(existedAdmin){
+        throw new ApiError(409,"Admin with email or adminname already exists.")
     }
     //console.log(req.files);
     const avatarLocalPath = req.files?.avatar[0]?.path;
@@ -75,47 +75,47 @@ const registerUser = asyncHandler(async (req,res) =>{
     if(!avatar){
         throw new ApiError(400,"Avatar file is required")
     }
-    const user = await User.create({
+    const admin = await Admin.create({
         fullName,
         avatar: avatar.url,
         coverImage:coverImage?.url || "",
         email,
         password,
-        username:username.toLowerCase()
+        adminname:adminname.toLowerCase()
     })
-    const createdUser =  await User.findById(user._id).select(
+    const createdAdmin =  await Admin.findById(admin._id).select(
         "-password -refreshToken"
     )
-    if(!createdUser){
-        throw new ApiError(500,"Something went wrong while registering the user")
+    if(!createdAdmin){
+        throw new ApiError(500,"Something went wrong while registering the admin")
     }
     return res.status(201).json(
-        new ApiResponse(200,createdUser,"User registered successfully")
+        new ApiResponse(200,createdAdmin,"Admin registered successfully")
     )
 })
 
-const loginUser = asyncHandler(async (req,res) => {
-    const {username,email,password} =req.body
-    if(!username && !email){
-        throw new ApiError(400,"Username or email is required");
+const loginAdmin = asyncHandler(async (req,res) => {
+    const {adminname,email,password} =req.body
+    if(!adminname && !email){
+        throw new ApiError(400,"Adminname or email is required");
     }
-    const user = await User.findOne({
-        $or :[{username},{email}]
+    const admin = await Admin.findOne({
+        $or :[{adminname},{email}]
     })
-    if(!user){
-        throw new ApiError(404,"User does not exist")
+    if(!admin){
+        throw new ApiError(404,"Admin does not exist")
     }
     //finding time of login
-    // user.lastLoginTime = getCurrentTime();
-    // user.online = true;
-    // await user.save();
+    // admin.lastLoginTime = getCurrentTime();
+    // admin.online = true;
+    // await admin.save();
 
-    const isPasswordValid = await user.isPasswordCorrect(password)
+    const isPasswordValid = await admin.isPasswordCorrect(password)
     if(!isPasswordValid){
-        throw new ApiError(401,"Invalid user credentials")
+        throw new ApiError(401,"Invalid admin credentials")
     }
-    const {refreshToken,accessToken} = await generateAccessAndRefreshTokens(user._id)
-    const loggedInUser = await User.findById(user._id).select(
+    const {refreshToken,accessToken} = await generateAccessAndRefreshTokens(admin._id)
+    const loggedInAdmin = await Admin.findById(admin._id).select(
         "-password -refreshToken"
     )
     const options = {
@@ -130,20 +130,20 @@ const loginUser = asyncHandler(async (req,res) => {
             new ApiResponse(
                 200,
             {
-               user: loggedInUser, refreshToken,accessToken, 
+               admin: loggedInAdmin, refreshToken,accessToken, 
             }, 
-            "User loggedIn successfully"
+            "Admin loggedIn successfully"
             )
             
         )
     
 })
-const logoutUser = asyncHandler(async (req,res) => {
-    await User.findByIdAndUpdate(
-        req.user._id,
+const logoutAdmin = asyncHandler(async (req,res) => {
+    await Admin.findByIdAndUpdate(
+        req.admin._id,
         {
-            $unset :{
-                refreshToken:1
+            $set :{
+                refreshToken : undefined
             }   
         },
         {
@@ -162,7 +162,7 @@ const logoutUser = asyncHandler(async (req,res) => {
         new ApiResponse(
             200,
             {},
-            "User logged Out"
+            "Admin logged Out"
         )
     )
 })
@@ -174,18 +174,18 @@ const refreshAccessToken = asyncHandler(async (req,res) => {
     }
     try {
         const decodeToken = jwt.verify(incomingRefreshToken,process.env.REFRESH_TOKEN_SECRET)
-        const user =await User.findById(decodeToken?._id)
-        if(!user){
+        const admin =await Admin.findById(decodeToken?._id)
+        if(!admin){
             throw new ApiError(401,"Invalid refresh token")
         }
-        if(incomingRefreshToken !== user?.refreshToken){
+        if(incomingRefreshToken !== admin?.refreshToken){
             throw new ApiError(401,"Refresh token is expired and used")
         }
         const options= {
             httpOnly:true,
             secure:true
         }
-        const {newrefreshToken,accessToken} = await generateAccessAndRefreshTokens(user._id)
+        const {newrefreshToken,accessToken} = await generateAccessAndRefreshTokens(admin._id)
         return res 
             .status(200)
             .cookie("accesstoken",accessToken,options)
@@ -207,21 +207,21 @@ const changeCurrentPassword = asyncHandler(async (req,res) => {
     if(!(confpassword === newpassword)){
         throw new ApiError(400,"Password incorrect")
     }
-    const user =await User.findById(req.user?._id)
-    const isPasswordCorrect = await user.isPasswordCorrect(oldpassword)
+    const admin =await Admin.findById(req.admin?._id)
+    const isPasswordCorrect = await admin.isPasswordCorrect(oldpassword)
     if(!isPasswordCorrect){
         throw new ApiError(400,"Invalid old password")
     }
-    user.password = newpassword
-    await user.save({validateBeforeSave:false})
+    admin.password = newpassword
+    await admin.save({validateBeforeSave:false})
     return res
     .status(200)
     .json(new ApiResponse(200,{},"Password change successfully"))
 })
-const getCurrentUser = asyncHandler(async (req,res) => {
+const getCurrentAdmin = asyncHandler(async (req,res) => {
     return res 
     .status(200)
-    .json(new ApiResponse(200,req.user,"Current user fetched successfully"))
+    .json(new ApiResponse(200,req.admin,"Current admin fetched successfully"))
 })
 
 const updateAccountDetails = asyncHandler(async (req,res) => {
@@ -229,8 +229,8 @@ const updateAccountDetails = asyncHandler(async (req,res) => {
     if(!fullName || !email){
         throw new ApiError(400,"All fields are required")
     }
-    const user = await User.findByIdAndUpdate(
-        req.user?._id,
+    const admin = await Admin.findByIdAndUpdate(
+        req.admin?._id,
         {
             $set:{
                 fullName,
@@ -241,11 +241,11 @@ const updateAccountDetails = asyncHandler(async (req,res) => {
     return res
     .status(200)
     .json(
-        new ApiResponse(200,user,"Account details updated successfully")
+        new ApiResponse(200,admin,"Account details updated successfully")
     )
 
 })
-const updateUserAvatar = asyncHandler(async (req,res) => {
+const updateAdminAvatar = asyncHandler(async (req,res) => {
     const avatarLocalPath = req.file?.path
     if(!avatarLocalPath){
         throw new ApiError(400,"Avatar file is missing")
@@ -254,8 +254,8 @@ const updateUserAvatar = asyncHandler(async (req,res) => {
     if(!avatar.url){
         throw new ApiError(400,"Error while uploading on avatar")
     }
-    const user = await User.findByIdAndUpdate(
-        req.user?._id,
+    const admin = await Admin.findByIdAndUpdate(
+        req.admin?._id,
         {
             $set:{
                 avatar:avatar.url
@@ -265,11 +265,11 @@ const updateUserAvatar = asyncHandler(async (req,res) => {
     ).select("-password")
     return res
         .status(200)
-        .json(new ApiResponse(200,user,"Avatar image update successfully"))
+        .json(new ApiResponse(200,admin,"Avatar image update successfully"))
     
 })
 
-const updateUserCoverImage = asyncHandler(async (req,res) => {
+const updateAdminCoverImage = asyncHandler(async (req,res) => {
     const coverImageLocalPath = req.file?.path
     if(!coverImageLocalPath){
         throw new ApiError(400,"Cover Image file is missing")
@@ -278,8 +278,8 @@ const updateUserCoverImage = asyncHandler(async (req,res) => {
     if(!coverImage.url){
         throw new ApiError(400,"Error while uploading on coverimage")
     }
-    const user = await User.findByIdAndUpdate(
-        req.user?._id,
+    const admin = await Admin.findByIdAndUpdate(
+        req.admin?._id,
         {
             $set:{
                 coverImage:coverImage.url
@@ -289,18 +289,18 @@ const updateUserCoverImage = asyncHandler(async (req,res) => {
     ).select("-password")
     return res
         .status(200)
-        .json(new ApiResponse(200,user,"Cover image update successfully"))
+        .json(new ApiResponse(200,admin,"Cover image update successfully"))
 })
 
 
 // const checkOnline = asyncHandler( async (req, res) => {
 //     try {
-//       const { username } = req.user;
-//       const user = await User.findOne({ username });
-//       if (user) {
-//         res.json({ online: user.online });
+//       const { adminname } = req.admin;
+//       const admin = await Admin.findOne({ adminname });
+//       if (admin) {
+//         res.json({ online: admin.online });
 //       } else {
-//         res.status(404).send('User not found');
+//         res.status(404).send('Admin not found');
 //       }
 //     } catch (error) {
 //       res.status(500).send('Error checking online status');
@@ -310,19 +310,19 @@ const updateUserCoverImage = asyncHandler(async (req,res) => {
 // // Calculate Total Time Excluding Away Periods
 // const totalTime = asyncHandler( async (req, res) => {
 //     try {
-//       const { username } = req.user;
-//       const user = await User.findOne({ username });
-//       if (!user || !user.lastLoginTime || !user.lastLogoutTime) {
-//         return res.status(404).send('User not found or session data incomplete');
+//       const { adminname } = req.admin;
+//       const admin = await Admin.findOne({ adminname });
+//       if (!admin || !admin.lastLoginTime || !admin.lastLogoutTime) {
+//         return res.status(404).send('Admin not found or session data incomplete');
 //       }
   
-//       const loginTime = new Date(user.lastLoginTime);
-//       const logoutTime = new Date(user.lastLogoutTime);
+//       const loginTime = new Date(admin.lastLoginTime);
+//       const logoutTime = new Date(admin.lastLogoutTime);
 //       const totalSessionTime = logoutTime - loginTime; // Total session time in milliseconds
   
 //       // Calculate total away time
 //       let totalAwayTime = 0;
-//       for (const period of user.awayPeriods) {
+//       for (const period of admin.awayPeriods) {
 //         totalAwayTime += new Date(period.end) - new Date(period.start);
 //       }
   
@@ -337,14 +337,14 @@ const updateUserCoverImage = asyncHandler(async (req,res) => {
 //     }
 // });
 export {
-    registerUser,
-    loginUser,
-    logoutUser,
+    registerAdmin,
+    loginAdmin,
+    logoutAdmin,
     refreshAccessToken,
     changeCurrentPassword,
-    getCurrentUser,
+    getCurrentAdmin,
     updateAccountDetails,
-    updateUserAvatar,
-    updateUserCoverImage
+    updateAdminAvatar,
+    updateAdminCoverImage
     //checkOnline
 }
